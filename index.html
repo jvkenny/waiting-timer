@@ -40,6 +40,7 @@
     button:active { transform: translateY(1px); opacity: .95; }
     .start { background: #22c55e; color: #06130b; }
     .stop  { background: #ef4444; }
+    .reset { background: #374151; margin-top: 8px; }
     .note { width: 100%; margin-top: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); padding: 10px; background: rgba(0,0,0,.2); color: #e5e7eb; }
     .tiny { margin-top: 10px; font-size: 12px; color: #94a3b8; }
     .pill { display:inline-block; padding: 2px 8px; font-size: 12px; border-radius: 999px; background:#111827;border:1px solid rgba(255,255,255,.08);}
@@ -56,6 +57,7 @@
       <button id="stopBtn"  class="stop" disabled>Stop & Log</button>
     </div>
     <textarea id="note" class="note" placeholder="Optional note (e.g., 'ArcPro map load', 'RDP login')"></textarea>
+    <button id="resetBtn" class="reset">Reset Timer</button>
     <div class="tiny">
       <span class="pill">State: <span id="state" class="ok">idle</span></span>
       <div id="status"></div>
@@ -64,7 +66,7 @@
 
   <script>
     // ====== CONFIG ======
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyN72J3v0y1IV7iJiAbGiQQq8yBPUPZF7pjY0wsDqhh0qJ-ExsDfHqHo_QnR5aQJboGxQ/exec"; // e.g. https://script.google.com/macros/s/XXXXX/exec
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyN72J3v0y1IV7iJiAbGiQQq8yBPUPZF7pjY0wsDqhh0qJ-ExsDfHqHo_QnR5aQJboGxQ/exec";
 
     // ====== STATE ======
     let startMs = null;
@@ -135,7 +137,6 @@
       const stopMs = Date.now();
       const durationMs = stopMs - startMs;
 
-      // Build payload
       const payload = {
         start_iso: new Date(startMs).toISOString(),
         stop_iso:  new Date(stopMs).toISOString(),
@@ -145,7 +146,6 @@
         user_agent: navigator.userAgent
       };
 
-      // Fire-and-forget POST to Apps Script (no-cors avoids CORS headaches)
       try {
         setStatus('Logging…');
         await fetch(WEB_APP_URL, {
@@ -157,16 +157,20 @@
         setStatus('Logged!');
       } catch (e) {
         setStatus('Could not log (saved locally).');
-        // optional: fall back to local queue
       }
 
-      // Reset UI
       startMs = null;
       localStorage.removeItem("waiting_timer_active");
       document.getElementById('startBtn').disabled = false;
       document.getElementById('stopBtn').disabled = true;
       setState('idle');
       render();
+    });
+
+    // Reset button
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      localStorage.removeItem('waiting_timer_active');
+      location.reload();
     });
 
     render();
