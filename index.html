@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <title>Waiting Timer</title>
+  <meta name="theme-color" content="#0f172a" />
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+      display: grid; place-items: center;
+      background: linear-gradient(160deg, #0b1220, #0f172a 35%, #111827);
+      color: #e5e7eb;
+      padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 460px;
+      background: rgba(17,24,39,.8);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      box-shadow: 0 12px 34px rgba(0,0,0,.35);
+      padding: 20px;
+    }
+    h1 { margin: 0 0 12px; font-weight: 700; font-size: 20px; letter-spacing: .2px; }
+    .timer {
+      font-variant-numeric: tabular-nums;
+      font-size: 48px; font-weight: 700; letter-spacing: 1px;
+      text-align: center; margin: 10px 0 16px;
+    }
+    .row { display: flex; gap: 12px; }
+    button {
+      flex: 1; border: 0; border-radius: 14px; padding: 14px 16px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      background: #1f2937; color: #e5e7eb;
+      transition: transform .06s ease, opacity .1s ease;
+    }
+    button:active { transform: translateY(1px); opacity: .95; }
+    .start { background: #22c55e; color: #06130b; }
+    .stop  { background: #ef4444; }
+    .note { width: 100%; margin-top: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); padding: 10px; background: rgba(0,0,0,.2); color: #e5e7eb; }
+    .tiny { margin-top: 10px; font-size: 12px; color: #94a3b8; }
+    .pill { display:inline-block; padding: 2px 8px; font-size: 12px; border-radius: 999px; background:#111827;border:1px solid rgba(255,255,255,.08);}
+    .ok    { color: #86efac; }
+    .warn  { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Time Spent Waiting</h1>
+    <div class="timer" id="display">00:00.0</div>
+    <div class="row">
+      <button id="startBtn" class="start">Start</button>
+      <button id="stopBtn"  class="stop" disabled>Stop & Log</button>
+    </div>
+    <textarea id="note" class="note" placeholder="Optional note (e.g., 'ArcPro map load', 'RDP login')"></textarea>
+    <div class="tiny">
+      <span class="pill">State: <span id="state" class="ok">idle</span></span>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <script>
+    // ====== CONFIG ======
+    const WEB_APP_URL = "Yhttps://script.google.com/macros/s/AKfycbyP4ex3lx-sBKFMG8WOQWWQrLJ1nm_uPdV_WKJFB41cTOg-c3Y1lOe7SP3QSS11duK_eA/exec"; // e.g. https://script.google.com/macros/s/XXXXX/exec
+
+    // ====== STATE ======
+    let startMs = null;
+    let tickInterval = null;
+
+    // restore if phone/refresh
+    const saved = localStorage.getItem("waiting_timer_active");
+    if (saved) {
+      try {
+        const obj = JSON.parse(saved);
+        if (obj && obj.startMs) {
+          startMs = obj.startMs;
+          startTicking();
+          document.getElementById('startBtn').disabled = true;
+          document.getElementById('stopBtn').disabled = false;
+          setState('running');
+        }
+      } catch (_) {}
+    }
+
+    const fmt = (ms) => {
+      const t = Math.max(0, ms|0);
+      const m = Math.floor(t/60000);
+      const s = Math.floor((t%60000)/1000);
+      const d = Math.floor((t%1000)/100);
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${d}`;
+    };
+
+    function render() {
+      if (startMs == null) {
+        document.getElementById('display').textContent = "00:00.0";
+        return;
+      }
+      document.getElementById('display').textContent = fmt(Date.now() - startMs);
+    }
+
+    function startTicking() {
+      clearInterval(tickInterval);
+      tickInterval = setInterval(render, 100);
+      render();
+    }
+
+    function setState(s) {
+      const el = document.getElementById('state');
+      el.textContent = s;
+      el.className = (s === 'running') ? 'ok' : (s === 'idle' ? 'ok' : 'warn');
+    }
+
+    function setStatus(msg) {
+      const el = document.getElementById('status');
+      el.textContent = msg || '';
+    }
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+      if (startMs != null) return;
+      startMs = Date.now();
+      localStorage.setItem("waiting_timer_active", JSON.stringify({ startMs }));
+      startTicking();
+      setState('running');
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      setStatus('');
+    });
+
+    document.getElementById('stopBtn').addEventListener('click', async () => {
+      if (startMs == null) return;
+      clearInterval(tickInterval);
+      const stopMs = Date.now();
+      const durationMs = stopMs - startMs;
+
+      // Build payload
+      const payload = {
+        start_iso: new Date(startMs).toISOString(),
+        stop_iso:  new Date(stopMs).toISOString(),
+        duration_ms: durationMs,
+        duration_sec: Math.round(durationMs / 100) / 10,
+        note: document.getElementById('note').value || '',
+        user_agent: navigator.userAgent
+      };
+
+      // Fire-and-forget POST to Apps Script (no-cors avoids CORS headaches)
+      try {
+        setStatus('Logging…');
+        await fetch(WEB_APP_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        setStatus('Logged!');
+      } catch (e) {
+        setStatus('Could not log (saved locally).');
+        // optional: fall back to local queue
+      }
+
+      // Reset UI
+      startMs = null;
+      localStorage.removeItem("waiting_timer_active");
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      setState('idle');
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
